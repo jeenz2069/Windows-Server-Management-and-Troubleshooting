@@ -1,0 +1,80 @@
+<#
+.SYNOPSIS
+  Recursively deletes empty folders from a specified path (local or UNC).
+
+.DESCRIPTION
+  - Source path is defined at the top of the script (no parameters)
+  - Works with local paths and UNC paths (\\server\share\...)
+  - Processes directories bottom-up to ensure nested empty folders are removed
+  - Deletes folders ONLY if they contain no files or subfolders
+  - Optional WhatIf mode for safety
+#>
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+# Root folder to scan (LOCAL or UNC path)
+$SourcePath = "\\jeenz-nas\DataOne\Recorded Music"
+
+# Set to $true for dry-run (no deletions)
+# Set to $false to actually delete empty folders
+$WhatIf = $false
+
+# ============================================================
+# VALIDATION
+# ============================================================
+
+if (-not (Test-Path -LiteralPath $SourcePath)) {
+    Write-Error "Source path does not exist: $SourcePath"
+    exit 1
+}
+
+Write-Host "Scanning for empty folders in:" -ForegroundColor Cyan
+Write-Host "  $SourcePath"
+
+if ($WhatIf) {
+    Write-Host "WhatIf mode: ENABLED" -ForegroundColor Yellow
+} else {
+    Write-Host "WhatIf mode: DISABLED" -ForegroundColor Green
+}
+
+Write-Host ""
+
+# ============================================================
+# PROCESS DIRECTORIES (DEEPEST FIRST)
+# ============================================================
+
+$directories = Get-ChildItem -LiteralPath $SourcePath -Directory -Recurse -Force |
+               Sort-Object FullName -Descending
+
+$deletedCount = 0
+
+foreach ($dir in $directories) {
+    try {
+        $items = Get-ChildItem -LiteralPath $dir.FullName -Force -ErrorAction Stop
+
+        if ($items.Count -eq 0) {
+            if ($WhatIf) {
+                Write-Host "[WhatIf] Would delete empty folder: $($dir.FullName)" -ForegroundColor Yellow
+            } else {
+                Remove-Item -LiteralPath $dir.FullName -Force -ErrorAction Stop
+                Write-Host "Deleted empty folder: $($dir.FullName)" -ForegroundColor Green
+            }
+
+            $deletedCount++
+        }
+    }
+    catch {
+        Write-Warning "Failed to process folder: $($dir.FullName)"
+        Write-Warning $_.Exception.Message
+    }
+}
+
+# ============================================================
+# SUMMARY
+# ============================================================
+
+Write-Host ""
+Write-Host "Completed." -ForegroundColor Cyan
+Write-Host "Empty folders removed: $deletedCount"
